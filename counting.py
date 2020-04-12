@@ -10,18 +10,26 @@ class Counting(commands.Cog):
         self.counting_channels = {}
         self.records = {}
         self.kicked_member_roles = {}
+        self.kicked_member_names = {}
         
     @commands.command(name='sorry')
     async def sorry_command(self,ctx):
         member = ctx.message.author
-        if not member.id in self.kicked_member_roles.keys():
-            return
-        for role in self.kicked_member_roles.get(member.id,[]):
-            await member.add_roles(role)
+        if member.id in self.kicked_member_roles.keys():
+            if member.id in self.kicked_member_names.keys():
+                await member.edit(name=self.kicked_member_names[member.id])
+                self.kicked_member_names.pop(member.id,None)
+            for role in self.kicked_member_roles.get(member.id,[]):
+                await member.add_roles(role)
 
-        end = "!" if len(self.kicked_member_roles[member.id]) == 0 else  ", your previous roles have been restored."
-        await ctx.message.channel.send(f"{member.mention} Thanks for apologizing"+end)
-        self.kicked_member_roles.pop(member.id,None)
+            end = "!" if len(self.kicked_member_roles[member.id]) == 0 else  ", your previous roles have been restored."
+            
+
+            channel = ctx.message.guild.system_channel if ctx.message.guild.system_channel else member
+                
+            await channel.send(f"{member.mention} Thanks for apologizing"+end)
+            self.kicked_member_roles.pop(member.id,None)
+            
     
         
     @commands.command()
@@ -76,6 +84,8 @@ class Counting(commands.Cog):
             
             if len(message.author.roles) > 1:
                 self.kicked_member_roles[message.author.id] = [role for role in list(message.author.roles)[1:]]
+            if message.author.display_name != message.author.name:
+                self.kicked_member_names[message.author.id] = message.author.display_name
                 
             invite = await message.channel.create_invite(reason="Everyone makes mistakes.",max_uses=1)
             
@@ -95,7 +105,7 @@ class Counting(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self,member):
         if member.id in self.kicked_member_roles.keys():
-            await member.send(f"To regain your previous roles type: `pls sorry`")
+            await member.send(f"To regain your previous roles and name type: `pls sorry`")
         
 def setup(_bot):
     cog = Counting(_bot)
