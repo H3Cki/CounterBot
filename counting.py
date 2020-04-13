@@ -52,7 +52,8 @@ class DatabaseHandler:
 
 class MemberStats(DatabaseHandler.Base):
     __tablename__ = "stats"
-    member_id = Column(BigInteger, primary_key=True)
+    id = Column(Integer,primary_key=True)
+    member_id = Column(BigInteger)
     guild_id = Column(BigInteger)
     points = Column(Integer)
     streak = Column(Integer)
@@ -96,82 +97,106 @@ class MemberStats(DatabaseHandler.Base):
             DatabaseHandler.add(result)
         return result
 
+
 class Counting(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.counting_channels = {}
-        self.records = {}
-        self.kicked_member_roles = {}
-        self.kicked_member_names = {}
-        self.previous_message = None
+        self.kicked_members = {}
+        self.watched_message_ids = []
+        self.no_delete = []
         
     @commands.command(name='sorry',aliases=['forgive'])
     async def sorry_command(self,ctx):
         member = ctx.message.author
-        if member.id in self.kicked_member_roles.keys():
-            if member.id in self.kicked_member_names.keys():
-                await member.edit(name=self.kicked_member_names[member.id])
-                self.kicked_member_names.pop(member.id,None)
-            for role in self.kicked_member_roles.get(member.id,[]):
+        
+        stuff = self.kicked_members.get(member.id,None)
+        if not stuff:
+            return
+        self.kicked_members.pop(member.id)
+        
+        roles = stuff['roles']
+        nick = stuff['nick']
+        
+        end_content = []
+        if roles:
+            for role in roles:
                 await member.add_roles(role)
+            end_content.append(f"{len(roles)} roles")
+        if nick:
+            await member.edit(nick=nick)
+            end_content.append(f"nickname")
 
-            end = "!" if len(self.kicked_member_roles[member.id]) == 0 else  ", your previous roles have been restored."
+        end = "!"
+        if end_content:
+            e = " and ".join(end_content)
+            end = f", you regained your previous {e}."
             
-
-            channel = ctx.message.guild.system_channel if ctx.message.guild.system_channel else member
-                
-            await channel.send(f"{member.mention} Thanks for apologizing"+end)
-            self.kicked_member_roles.pop(member.id,None)
+        channel = ctx.message.guild.system_channel if ctx.message.guild.system_channel else member
             
-    @commands.command(name='clean')
+        await channel.send(f"{member.mention} Thanks for apologizing"+end)
+        
+        
+    @commands.command(name='purge')
     async def clean_command(self,ctx):
-        await self.clean()
+        await self.purgechannel(ctx.message.channel)
         
+    @commands.command(name='load')
+    async def load_command(self,ctx): 
+        await self.loadLastMessagePerChannel(self,channel=None)
         
-    async def clean(self):
+    async def purgechannel(self,channel):
+        cat_id = channel.category_id
+        category = None
+        for c in channel.guild.categories:
+            if c.id == cat_id:
+                category = c
+        if category:
+            c = await category.create_text_channel(channel.name)
+            await c.edit(position=channel.position)
+            await channel.delete()
+        
+        await self.loadLastMessagePerChannel()
+    
+    async def loadLastMessagePerChannel(self,channel=None):
         def predicate(message):
             return message.content.isdigit()
-        for channel_id in self.counting_channels.keys():
-            channel = self.bot.get_channel
-            to_del = []
-            async for elem in channel.history(limit=None).filter(not predicate):
-                to_del.append(elem)
-            await channel.delete_messages(to_del)
-    
-    
-    async def loadLastMessagePerChannel(self):
-        def predicate(message):
-            return message.content.isdigit()
-        for channel_id in self.counting_channels.keys():
-            channel = self.bot.get_channel
-            to_del = []
-            async for elem in channel.history(limit=None).filter(predicate):
-                if predicate(elem):
-                    self.counting_channels[channel.id]['last_message_author_id'] = elem.author.id
-                    break
-    
-                            
+        for guild in self.bot.guilds:
+            for channel in guild.text_channels:
+                if 'counting' in channel.name:
+                    self.counting_channels[channel.id] = {}
+                    print(f"ADDED CHANNEL {channel.name}")
+                    to_del = []
+                    found = False
+                    async for elem in channel.history(limit=100).filter(predicate):
+                        if predicate(elem):
+                            self.counting_channels[channel.id]['last_message'] = elem
+                            self.counting_channels[channel.id]["current_value"] = int(elem.content)
+                            print(f"SET LAST VALUE TO  {int(elem.content)}")
+                            found = True
+                            break
+                        else:
+                            to_del.append(elem)
+                    if not found:
+                        self.counting_channels[channel.id]['last_message'] = None
+                        self.counting_channels[channel.id]["current_value"] = 0
+                    await channel.delete_messages(to_del)
+                                
                 
     @commands.command()
     async def startcounting(self,ctx,number:int=0):
         self.counting_channels[ctx.message.channel.id] = {}
         self.counting_channels[ctx.message.channel.id]["current_value"] = number
-        self.counting_channels[ctx.message.channel.id]["last_message_author_id"] = None
+        self.counting_channels[ctx.message.channel.id]['last_message'] = None
         
         
     # @commands.command()
-    # async def stopcounting(self,ctx):
-    #     idx = None
-    #     for i,channel_id in enumerate(self.counting_channels):
-    #         if ctx.message.channel.id in channel_id.keys():
-    #             idx = i
-    #             break
-    #     if idx:
-    #         self.counting_channels.pop(ctx.message.channel.id, None)
-    
+    # async def reset(self,ctx):
+        
     
     @commands.command()
     async def rank(self,ctx):
+        return
         all_stats = MemberStats.get(guild=ctx.message.guild)
         all_stats = sorted(all_stats,key = lambda x: (x.points,x.longestStreak), reverse=True)
         if len(all_stats) > 10:
@@ -200,42 +225,47 @@ class Counting(commands.Cog):
     async def resetcounting(self,ctx):
         self.counting_channels = {}
         
-
     @commands.command()
     async def destreak(self,ctx):
         await ctx.send(str(self.counting_channels[ctx.message.channel.id]['current_value']+1))
 
-
-    
+    def addkmember(self,member):
+        self.kicked_members[member.id] = {"roles": None, "nick": None}
+        
     
     @commands.Cog.listener()
     async def on_message(self,message):
-        if not message.channel.id in self.counting_channels.keys():
+        if not message.channel.id in self.counting_channels.keys() or message.author.id == self.bot.user.id:
             return
         member = message.author
         try:
-            if not message.content.isdigit():
+            if not message.content.isdigit() or message.content.startswith("0"):
+                self.no_delete.append(message.id)
                 await message.delete()
                 return
             number = int(message.content)
         except:
+            self.no_delete.append(message.id)
             await message.delete()
             return
             
         if number != self.counting_channels[message.channel.id]['current_value']+1:
-            
+            self.addkmember(member)
             if len(member.roles) > 1:
-                self.kicked_member_roles[member.id] = [role for role in list(member.roles)[1:]]
+                self.kicked_members["roles"] = [role for role in list(member.roles)[1:]]
             if member.display_name != member.name:
-                self.kicked_member_names[member.id] = member.display_name
+                self.kicked_members["nick"] = member.display_name
                 
             invite = await message.channel.create_invite(reason="Everyone makes mistakes.",max_uses=1)
             
             try:
-                await member.send(f"You miscounted, next number is {self.counting_channels[message.channel.id]['current_value']+1}, not {number}! Feel free to join back after you rethink your life choices: {invite.url}")
+                await member.send(f"You miscounted, next number is {self.counting_channels[message.channel.id]['current_value']+1}, not {number}! Everyone makes mistakes, feel free to join back after you rethink your life choices: {invite.url}")
             except:
                 pass
-            await member.kick()
+            try:
+                await member.kick()
+            except:
+                pass
             await message.delete()
             return
          
@@ -243,28 +273,116 @@ class Counting(commands.Cog):
 
         stats = MemberStats.get(member,member.guild)
         stats.addPoints()
-        if self.counting_channels[message.channel.id].get("last_message_author_id",member.id) == member.id:
+        
+        lm = self.counting_channels[message.channel.id].get("last_message")
+        if not lm or lm.author.id == member.id:
             stats.addStreak()
         else:
             stats.setStreak(1)
         stats.lastCountedNumber = number
         
         
-        self.counting_channels[message.channel.id]['last_message_author_id'] = member.id
+        self.counting_channels[message.channel.id]['last_message'] = message
         
         DatabaseHandler.commit()
     
+    
+    
     @commands.Cog.listener()
     async def on_member_join(self,member):
-        if member.id in self.kicked_member_roles.keys():
+        km = self.kicked_members.get(member.id)
+        if km:
             await member.send(f"To regain your previous roles and name type: `pls sorry`")
+    
+    @commands.Cog.listener()
+    async def on_message_delete(self,message):
+        counting_channel_id = self.counting_channels.get(message.channel.id, None)
+        if not counting_channel_id or message.id in self.no_delete:
+            self.no_delete.remove(message.id)
+            return
+        last_mess = self.counting_channels[message.channel.id]['last_message']
+        try:
+            await message.author.kick()
+        except:
+            pass
+        if not last_mess:
+            return
+        
+        if last_mess.id == message.id:
+            messge = await message.channel.send(message.content)
+            self.counting_channels[message.channel.id]['last_message'] = message
+            invite = await message.channel.create_invite(max_uses=1)
+            await message.author.send(f"Don't do that again please: {invite.url}")
+        else:
+            self.counting_channels[message.channel.id]['last_message'] = None
+            self.counting_channels[message.channel.id]['current_value'] = 0
+            await message.guild.system_channel.send(f"{message.author.mention} Fucked up entire counting process by deleting number **{message.content}**. Go play with your dad's dick like you always do {message.author.mention}.")
+            await self.purgechannel(message.channel)
             
+            
+    @commands.Cog.listener()
+    async def on_raw_message_delete(self,message):
+        if message.channel_id in self.counting_channels.keys():
+            if not message.cached_message:
+                try:
+                    await message.author.kick()
+                except:
+                    pass
+                channel = self.bot.get_channel(message.channel_id)
+                await channel.guild.system_channel.send(f"Someone fucked up entire counting process by deleting a message. Go play with your dad's dick like you always do you message-deleting cunt, go kys.")
+                await self.purgechannel(channel)
+            
+    @commands.Cog.listener()
+    async def on_raw_message_edit(self,message):
+        if message.channel_id in self.counting_channels.keys():
+            if not message.cached_message:
+                try:
+                    await message.author.kick()
+                except:
+                    pass
+                message = await self.bot.get_channel(message.channel_id).fetch_message(message.message_id)
+                await message.guild.system_channel.send(f"{message.author.mention} Fucked up entire counting process by editing a message. Go play with your dad's dick like you always do {message.author.mention}.")
+                await self.purgechannel(message.channel)
+
+    @commands.Cog.listener()
+    async def on_message_edit(self,before,after):
+        # if not message.cached_message:
+        #     message = await self.bot.fetch_message(message.message_id)
+        message = before
+        counting_channel = self.counting_channels.get(message.channel.id, None)
+        if not counting_channel or message.id in self.watched_message_ids:
+            return
+        last_mess = self.counting_channels[message.channel.id]['last_message']
+        if after.id == last_mess.id:
+            self.no_delete.append(after.id)
+            await after.delete()
+            message = await before.channel.send(before.content)
+            self.counting_channels[message.channel.id]['last_message'] = message
+            return
+        self.watched_message_ids.append(message.id)
+        desired_content = message.content
+        time = random.randint(5,60)
+        embed = discord.Embed(description = f"You edited [this message]({message.jump_url}), it doesn't meet our counting standards.\nRevert it back to its original value ({message.content}) in `{time}` seconds and you won't be kicked.",color=discord.Colour.from_rgb(255,0,0))
+        await message.author.send(embed=embed)
+        await asyncio.sleep(time)
+        if after.content != desired_content:
+            self.counting_channels[message.channel.id]['last_message'] = None
+            self.counting_channels[message.channel.id]['current_value'] = 0
+            try:
+                await after.author.kick()
+            except:
+                pass
+            await message.guild.system_channel.send(f"{message.author.mention} Fucked up entire counting process by editing a message. Go play with your dad's dick like you always do {message.author.mention}.")
+        else:
+            await after.author.send(embed=discord.Embed(description = f"Thank You for editing your message.",color=discord.Colour.from_rgb(0,255,0)))
+        
             
     @commands.Cog.listener()
     async def on_ready(self):
         DatabaseHandler.init();
         DatabaseHandler.createTables();
         await self.loadLastMessagePerChannel()
+        print("Everything loaded")
         
 def setup(_bot):
     cog = Counting(_bot)
