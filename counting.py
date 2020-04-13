@@ -266,6 +266,7 @@ class Counting(commands.Cog):
                 await member.kick()
             except:
                 pass
+            self.no_delete.append(message.id)
             await message.delete()
             return
          
