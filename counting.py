@@ -366,15 +366,17 @@ class Counting(commands.Cog):
         await message.author.send(embed=embed)
         await asyncio.sleep(time)
         if after.content != desired_content:
-            self.counting_channels[message.channel.id]['last_message'] = None
-            self.counting_channels[message.channel.id]['current_value'] = 0
             try:
                 await after.author.kick()
             except:
                 pass
+            
+            await self.purgechannel(message.channel)
             await message.guild.system_channel.send(f"{message.author.mention} Fucked up entire counting process by editing a message. Go play with your dad's dick like you always do {message.author.mention}.")
+           
         else:
             await after.author.send(embed=discord.Embed(description = f"Thank You for editing your message.",color=discord.Colour.from_rgb(0,255,0)))
+        self.watched_message_ids.remove(after.id)
         
             
     @commands.Cog.listener()
