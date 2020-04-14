@@ -108,24 +108,22 @@ class Counting(commands.Cog):
         
     @commands.command(name='sorry',aliases=['forgive'])
     async def sorry_command(self,ctx):
+        print(self.kicked_members[ctx.message.author.id])
         member = ctx.message.author
         
-        stuff = self.kicked_members.get(member.id,None)
-        if not stuff:
+        if not member.id in self.kicked_members.keys():
             return
-        self.kicked_members.pop(member.id)
-        
-        roles = stuff['roles']
-        nick = stuff['nick']
-        
+
         end_content = []
-        if roles:
-            for role in roles:
+        if self.kicked_members[member.id]['roles']:
+            for role in self.kicked_members[member.id]['roles']:
                 await member.add_roles(role)
-            end_content.append(f"{len(roles)} roles")
-        if nick:
-            await member.edit(nick=nick)
+            end_content.append(f"{len(self.kicked_members[member.id]['roles'])} roles")
+ 
+        if self.kicked_members[member.id]['nick']:
+            await member.edit(nick=self.kicked_members[member.id]['nick'])
             end_content.append(f"nickname")
+
 
         end = "!"
         if end_content:
@@ -133,7 +131,7 @@ class Counting(commands.Cog):
             end = f", you regained your previous {e}."
             
         channel = ctx.message.guild.system_channel if ctx.message.guild.system_channel else member
-            
+        self.kicked_members.pop(member.id,None)    
         await channel.send(f"{member.mention} Thanks for apologizing"+end)
         
         
@@ -232,7 +230,7 @@ class Counting(commands.Cog):
     def addkmember(self,member):
         if member.id in self.kicked_members.keys():
             return False
-        self.kicked_members[member.id] = {"roles": None, "nick": None}
+        
         return True
     
     @commands.Cog.listener()
@@ -252,14 +250,14 @@ class Counting(commands.Cog):
             return
             
         if number != self.counting_channels[message.channel.id]['current_value']+1:
-            added = self.addkmember(member)
-            
-            if added:
+            if not member.id in self.kicked_members.keys():
+                self.kicked_members[member.id] = {}
+           
                 if len(member.roles) > 1:
                     self.kicked_members["roles"] = [role for role in list(member.roles)[1:]]
                 if member.display_name != member.name:
                     self.kicked_members["nick"] = member.display_name
-                
+
             invite = await message.channel.create_invite(reason="Everyone makes mistakes.",max_uses=1)
             
             try:
@@ -295,8 +293,7 @@ class Counting(commands.Cog):
     
     @commands.Cog.listener()
     async def on_member_join(self,member):
-        km = self.kicked_members.get(member.id)
-        if km:
+        if member.id in self.kicked_members.keys():
             await member.send(f"To regain your previous roles and name type: `pls sorry`")
     
     @commands.Cog.listener()
