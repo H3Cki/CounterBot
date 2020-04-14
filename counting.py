@@ -230,8 +230,10 @@ class Counting(commands.Cog):
         await ctx.send(str(self.counting_channels[ctx.message.channel.id]['current_value']+1))
 
     def addkmember(self,member):
+        if member.id in self.kicked_members.keys():
+            return False
         self.kicked_members[member.id] = {"roles": None, "nick": None}
-        
+        return True
     
     @commands.Cog.listener()
     async def on_message(self,message):
@@ -250,11 +252,13 @@ class Counting(commands.Cog):
             return
             
         if number != self.counting_channels[message.channel.id]['current_value']+1:
-            self.addkmember(member)
-            if len(member.roles) > 1:
-                self.kicked_members["roles"] = [role for role in list(member.roles)[1:]]
-            if member.display_name != member.name:
-                self.kicked_members["nick"] = member.display_name
+            added = self.addkmember(member)
+            
+            if added:
+                if len(member.roles) > 1:
+                    self.kicked_members["roles"] = [role for role in list(member.roles)[1:]]
+                if member.display_name != member.name:
+                    self.kicked_members["nick"] = member.display_name
                 
             invite = await message.channel.create_invite(reason="Everyone makes mistakes.",max_uses=1)
             
