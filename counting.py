@@ -108,20 +108,21 @@ class Counting(commands.Cog):
         
     @commands.command(name='sorry',aliases=['forgive'])
     async def sorry_command(self,ctx):
-        print(self.kicked_members[ctx.message.author.id])
         member = ctx.message.author
         
         if not member.id in self.kicked_members.keys():
             return
 
         end_content = []
-        if self.kicked_members[member.id]['roles']:
-            for role in self.kicked_members[member.id]['roles']:
+        roles = self.kicked_members[member.id].get('roles',None)
+        nick = self.kicked_members[member.id].get('nick',None)
+        if roles:
+            for role in roles:
                 await member.add_roles(role)
-            end_content.append(f"{len(self.kicked_members[member.id]['roles'])} roles")
+            end_content.append(f"{len(roles)} roles")
  
-        if self.kicked_members[member.id]['nick']:
-            await member.edit(nick=self.kicked_members[member.id]['nick'])
+        if nick:
+            await member.edit(nick=nick)
             end_content.append(f"nickname")
 
 
@@ -230,7 +231,7 @@ class Counting(commands.Cog):
     def addkmember(self,member):
         if member.id in self.kicked_members.keys():
             return False
-        
+        self.kicked_members[member.id] = {}
         return True
     
     @commands.Cog.listener()
@@ -250,13 +251,13 @@ class Counting(commands.Cog):
             return
             
         if number != self.counting_channels[message.channel.id]['current_value']+1:
-            if not member.id in self.kicked_members.keys():
-                self.kicked_members[member.id] = {}
-           
+            added = self.addkmember(member)
+                
+            if added:
                 if len(member.roles) > 1:
-                    self.kicked_members["roles"] = [role for role in list(member.roles)[1:]]
+                    self.kicked_members[member.id]["roles"] = list([role for role in list(member.roles)[1:]])
                 if member.display_name != member.name:
-                    self.kicked_members["nick"] = member.display_name
+                    self.kicked_members[member.id]["nick"] = str(member.display_name)
 
             invite = await message.channel.create_invite(reason="Everyone makes mistakes.",max_uses=1)
             
