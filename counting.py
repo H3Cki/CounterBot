@@ -195,7 +195,7 @@ class Counting(commands.Cog):
     
     @commands.command()
     async def rank(self,ctx):
-        return
+        #return
         all_stats = MemberStats.get(guild=ctx.message.guild)
         all_stats = sorted(all_stats,key = lambda x: (x.points,x.longestStreak), reverse=True)
         if len(all_stats) > 10:
