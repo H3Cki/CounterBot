@@ -89,7 +89,7 @@ class MemberStats(DatabaseHandler.Base):
         if member is None:
             q = DatabaseHandler.session.query(MemberStats)
             if guild:
-                q.filter(MemberStats.guild_id==guild.id)
+                q = q.filter(MemberStats.guild_id==guild.id)
             return q.all()
         result = DatabaseHandler.session.query(MemberStats).filter(MemberStats.member_id == member.id,MemberStats.guild_id == guild.id).first()
         if not result:
