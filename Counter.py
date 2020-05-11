@@ -22,4 +22,4 @@ async def on_ready():
     print(f'\n\nLogged in as: {bot.user.name} - {bot.user.id}\nVersion: {discord.__version__}\n')
     print(f'[{datetime.now()}] Successfully logged in and booted...!')
 
-bot.run("Njk4OTg1MTU2NjY4Njg2MzU3.XpNysQ.Vrj-ML5FgUpqp5vJsCT_pvr2FF4",reconnect=True)
+bot.run("",reconnect=True)
